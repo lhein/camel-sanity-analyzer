@@ -46,8 +46,8 @@ export function Selector({ onAnalyze, busy }: Props) {
 
   const filtered = useMemo(() => {
     const q = filter.toLowerCase().trim();
-    if (!q) return components.slice(0, 50);
-    return components.filter((c) => c.toLowerCase().includes(q)).slice(0, 50);
+    if (!q) return components;
+    return components.filter((c) => c.toLowerCase().includes(q));
   }, [components, filter]);
 
   const canAnalyze = !!selected && !!version && !busy;
