@@ -1,6 +1,7 @@
 package com.github.lhein.camelsanity.enrichment;
 
 import com.github.lhein.camelsanity.model.Coordinate;
+import com.github.lhein.camelsanity.scoring.VersionUtils;
 import org.eclipse.aether.util.version.GenericVersionScheme;
 import org.eclipse.aether.version.InvalidVersionSpecificationException;
 import org.eclipse.aether.version.Version;
@@ -18,6 +19,8 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Client for the Maven Central Search REST API (https://search.maven.org/).
@@ -28,7 +31,9 @@ public class MavenCentralClient {
 
     private static final Logger log = LoggerFactory.getLogger(MavenCentralClient.class);
     private static final String SEARCH_URL = "https://search.maven.org/solrsearch/select";
+    private static final String CENTRAL_REPO = "https://repo.maven.apache.org/maven2/";
     private static final VersionScheme VERSION_SCHEME = new GenericVersionScheme();
+    private static final Pattern VERSION_TAG = Pattern.compile("<version>([^<]+)</version>");
 
     private final WebClient client;
 
@@ -86,60 +91,50 @@ public class MavenCentralClient {
 
     /**
      * List all available versions for a given groupId:artifactId, sorted newest-first.
+     * <p>
+     * Uses the artifact's maven-metadata.xml from the Central repo, which is authoritative
+     * and complete. The Solr search API is unreliable for this: with core=gav it caps rows
+     * to 20 regardless of the rows parameter, and the index can lag behind the repo by months.
+     * <p>
+     * Per-version timestamps are not included — they are not in maven-metadata.xml. The
+     * enricher pulls them from deps.dev where needed.
      */
     @Cacheable(value = "maven-versions", key = "#groupId + ':' + #artifactId")
     public List<VersionInfo> listVersions(String groupId, String artifactId) {
+        String url = CENTRAL_REPO + groupId.replace('.', '/') + "/" + artifactId + "/maven-metadata.xml";
         try {
-            Map<String, Object> body = client.get()
-                    .uri(uri -> uri
-                            .scheme("https").host("search.maven.org").path("/solrsearch/select")
-                            .queryParam("q", "g:" + groupId + " AND a:" + artifactId)
-                            .queryParam("core", "gav")
-                            .queryParam("rows", 200)
-                            .queryParam("wt", "json")
-                            .build())
+            String xml = client.get()
+                    .uri(url)
                     .retrieve()
-                    .bodyToMono(Map.class)
-                    .timeout(Duration.ofSeconds(15))
+                    .bodyToMono(String.class)
+                    .timeout(Duration.ofSeconds(10))
                     .block();
-            if (body == null) return List.of();
-            Map<String, Object> response = (Map<String, Object>) body.get("response");
-            if (response == null) return List.of();
-            List<Map<String, Object>> docs = (List<Map<String, Object>>) response.get("docs");
-            if (docs == null) return List.of();
+            if (xml == null) return List.of();
             List<VersionInfo> versions = new ArrayList<>();
-            for (Map<String, Object> d : docs) {
-                String v = (String) d.get("v");
-                Number ts = (Number) d.get("timestamp");
-                if (v == null) continue;
-                Instant released = ts != null ? Instant.ofEpochMilli(ts.longValue()) : null;
-                versions.add(new VersionInfo(v, released));
+            Matcher m = VERSION_TAG.matcher(xml);
+            while (m.find()) {
+                String v = m.group(1).trim();
+                if (!v.isEmpty()) versions.add(new VersionInfo(v, null));
             }
-            // Sort semantically by version, newest first. Falls back to release date
-            // if version parsing fails for some artifact.
             versions.sort((x, y) -> compareVersions(y.version(), x.version()));
             return versions;
         } catch (Exception e) {
-            log.warn("Failed to list versions for {}:{}: {}", groupId, artifactId, e.getMessage());
+            log.warn("Failed to read maven-metadata.xml for {}:{}: {}", groupId, artifactId, e.getMessage());
             return List.of();
         }
     }
 
+    /**
+     * Highest stable version (excluding alpha/beta/RC/milestone/snapshot). Falls back
+     * to the highest pre-release if the artifact has only pre-releases.
+     */
     @Cacheable(value = "maven-latest", key = "#coord.ga()")
     public Optional<VersionInfo> latestVersion(Coordinate coord) {
         List<VersionInfo> versions = listVersions(coord.groupId(), coord.artifactId());
-        return versions.isEmpty() ? Optional.empty() : Optional.of(versions.get(0));
-    }
-
-    /**
-     * Find release date for a specific GAV. Looked up via the gav core search.
-     */
-    public Optional<Instant> releaseDate(Coordinate coord) {
-        List<VersionInfo> versions = listVersions(coord.groupId(), coord.artifactId());
         return versions.stream()
-                .filter(v -> v.version().equals(coord.version()))
+                .filter(v -> !VersionUtils.isPreRelease(v.version()))
                 .findFirst()
-                .map(VersionInfo::released);
+                .or(() -> versions.stream().findFirst());
     }
 
     public record VersionInfo(String version, Instant released) {

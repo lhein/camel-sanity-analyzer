@@ -8,8 +8,10 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.util.UriUtils;
 
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
@@ -33,7 +35,8 @@ public class DepsDevClient {
     public DepsDevInfo fetchVersion(Coordinate coord) {
         String name = UriUtils.encode(coord.groupId() + ":" + coord.artifactId(), StandardCharsets.UTF_8);
         String version = UriUtils.encode(coord.version(), StandardCharsets.UTF_8);
-        String url = BASE + "/systems/maven/packages/" + name + "/versions/" + version;
+        // Pass an already-built URI so WebClient does not re-encode percent escapes.
+        URI url = URI.create(BASE + "/systems/maven/packages/" + name + "/versions/" + version);
 
         try {
             Map<String, Object> body = client.get()
@@ -63,17 +66,29 @@ public class DepsDevClient {
                 }
             }
 
-            return new DepsDevInfo(license, sourceRepo);
+            Instant publishedAt = parseInstant((String) body.get("publishedAt"));
+
+            return new DepsDevInfo(license, sourceRepo, publishedAt);
         } catch (Exception e) {
             log.debug("deps.dev fetch failed for {}: {}", coord.gav(), e.getMessage());
             return DepsDevInfo.empty();
         }
     }
 
+    private static Instant parseInstant(String s) {
+        if (s == null) return null;
+        try {
+            return Instant.parse(s);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     @Cacheable(value = "depsdev", key = "'p:' + #projectId")
     public ProjectInfo fetchProject(String projectId) {
         if (projectId == null || projectId.isBlank()) return ProjectInfo.empty();
-        String url = BASE + "/projects/" + UriUtils.encode(projectId, StandardCharsets.UTF_8);
+        URI url = URI.create(BASE + "/projects/"
+                + UriUtils.encode(projectId, StandardCharsets.UTF_8));
         try {
             Map<String, Object> body = client.get()
                     .uri(url)
@@ -103,9 +118,9 @@ public class DepsDevClient {
         }
     }
 
-    public record DepsDevInfo(String license, String sourceRepo) {
+    public record DepsDevInfo(String license, String sourceRepo, Instant publishedAt) {
         public static DepsDevInfo empty() {
-            return new DepsDevInfo(null, null);
+            return new DepsDevInfo(null, null, null);
         }
     }
 

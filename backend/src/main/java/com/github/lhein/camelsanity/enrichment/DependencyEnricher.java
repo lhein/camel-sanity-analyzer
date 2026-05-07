@@ -53,8 +53,6 @@ public class DependencyEnricher {
         // Run independent fetches in parallel
         CompletableFuture<Optional<MavenCentralClient.VersionInfo>> latestF =
                 supply(() -> mavenCentral.latestVersion(coord), Optional.empty());
-        CompletableFuture<Optional<Instant>> releaseF =
-                supply(() -> mavenCentral.releaseDate(coord), Optional.empty());
         CompletableFuture<PomMetadataClient.PomMetadata> pomF =
                 supply(() -> pomClient.fetch(coord), PomMetadataClient.PomMetadata.empty());
         CompletableFuture<DepsDevClient.DepsDevInfo> depsF =
@@ -65,13 +63,14 @@ public class DependencyEnricher {
         // Wait for the ones that feed downstream lookups
         DepsDevClient.DepsDevInfo depsInfo = depsF.join();
         PomMetadataClient.PomMetadata pom = pomF.join();
+        Optional<MavenCentralClient.VersionInfo> latest = latestF.join();
 
         String resolvedRepo = depsInfo.sourceRepo();
         if (resolvedRepo == null) resolvedRepo = pom.scmUrl();
         if (resolvedRepo == null) resolvedRepo = RepoHeuristics.guess(coord);
         final String repoUrl = resolvedRepo;
 
-        // Now downstream: GitHub repo + deps.dev project
+        // Now downstream: GitHub repo, deps.dev project, deps.dev for latest version's publishedAt
         Optional<GitHubClient.OwnerRepo> ownerRepo = GitHubClient.parseRepo(repoUrl);
         CompletableFuture<GitHubClient.RepoInfo> ghF = ownerRepo
                 .map(or -> supply(() -> github.fetchRepo(or.owner(), or.repo()),
@@ -83,22 +82,32 @@ public class DependencyEnricher {
                         DepsDevClient.ProjectInfo.empty())
                 : CompletableFuture.completedFuture(DepsDevClient.ProjectInfo.empty());
 
-        Optional<MavenCentralClient.VersionInfo> latest = latestF.join();
-        Optional<Instant> releaseDate = releaseF.join();
+        // Fetch the latest stable version's publishedAt, but only if it differs from the
+        // current coord — otherwise we'd just hit the cache for the same key.
+        CompletableFuture<DepsDevClient.DepsDevInfo> latestDepsF = latest
+                .filter(v -> !v.version().equals(coord.version()))
+                .map(v -> supply(() -> depsDev.fetchVersion(
+                                new Coordinate(coord.groupId(), coord.artifactId(), v.version())),
+                        DepsDevClient.DepsDevInfo.empty()))
+                .orElse(CompletableFuture.completedFuture(depsInfo));
+
         GitHubClient.RepoInfo gh = ghF.join();
         DepsDevClient.ProjectInfo proj = projF.join();
+        DepsDevClient.DepsDevInfo latestDeps = latestDepsF.join();
         List<Vulnerability> vulns = osvF.join();
 
         // Aggregate
         Integer behind = latest
                 .map(v -> VersionUtils.majorVersionsBehind(coord.version(), v.version()))
                 .orElse(null);
+        Instant releaseDate = depsInfo.publishedAt();
+        Instant latestReleaseDate = latestDeps.publishedAt();
 
         HealthScorer.Builder b = new HealthScorer.Builder();
         b.archived = gh.archived();
         b.lastCommit = gh.lastPush();
         b.lastGithubRelease = gh.latestRelease();
-        b.latestMavenReleaseDate = latest.map(MavenCentralClient.VersionInfo::released).orElse(null);
+        b.latestMavenReleaseDate = latestReleaseDate;
         b.majorVersionsBehind = behind;
         b.contributors = gh.contributors();
         b.scorecardScore = proj.scorecardScore();
@@ -117,8 +126,8 @@ public class DependencyEnricher {
         return new HealthInfo(
                 coord,
                 latest.map(MavenCentralClient.VersionInfo::version).orElse(null),
-                releaseDate.orElse(null),
-                latest.map(MavenCentralClient.VersionInfo::released).orElse(null),
+                releaseDate,
+                latestReleaseDate,
                 behind,
                 pom.organizationName(),
                 firstNonBlank(pom.projectUrl(), pom.organizationUrl(), gh.homepage()),
