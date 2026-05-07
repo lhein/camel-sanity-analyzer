@@ -6,9 +6,18 @@ import type {
   VersionInfo,
 } from "./types";
 
-export async function fetchArtifacts(): Promise<ArtifactsResponse> {
-  const r = await fetch("/api/artifacts");
+export async function fetchArtifacts(camelVersion?: string): Promise<ArtifactsResponse> {
+  const url = camelVersion
+    ? `/api/artifacts?camelVersion=${encodeURIComponent(camelVersion)}`
+    : "/api/artifacts";
+  const r = await fetch(url);
   if (!r.ok) throw new Error("Failed to load artifacts");
+  return r.json();
+}
+
+export async function fetchCamelVersions(): Promise<string[]> {
+  const r = await fetch("/api/camel-versions");
+  if (!r.ok) throw new Error("Failed to load Camel versions");
   return r.json();
 }
 
@@ -34,13 +43,14 @@ export interface AnalyzeCallbacks {
 
 export function analyze(
   coord: Coordinate,
+  options: { includeTest: boolean },
   cb: AnalyzeCallbacks,
 ): { close: () => void } {
   const url = `/api/analyze?artifactId=${encodeURIComponent(
     coord.artifactId,
   )}&version=${encodeURIComponent(coord.version)}&groupId=${encodeURIComponent(
     coord.groupId,
-  )}`;
+  )}&includeTest=${options.includeTest ? "true" : "false"}`;
   const es = new EventSource(url);
   es.addEventListener("progress", (ev) => {
     try {

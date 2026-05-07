@@ -20,7 +20,8 @@ public record AnalysisResult(
             int unknown,
             int withVulnerabilities,
             int totalVulnerabilities,
-            int archivedRepos) {
+            int archivedRepos,
+            int testOnly) {
     }
 
     public List<HealthInfo> flatList() {

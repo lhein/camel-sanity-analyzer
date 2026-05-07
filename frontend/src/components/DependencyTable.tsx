@@ -126,8 +126,11 @@ export function DependencyTable({ rows, onSelect }: Props) {
                   onClick={() => onSelect(r)}
                 >
                   <td className="px-3 py-2">
-                    <div className="font-medium text-slate-100">
-                      {r.coordinate.artifactId}
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-slate-100">
+                        {r.coordinate.artifactId}
+                      </span>
+                      {isTestOnly(r) && <TestBadge />}
                     </div>
                     <div className="text-xs text-slate-500">
                       {r.coordinate.groupId}
@@ -196,6 +199,25 @@ function Th({
       {label}
       {active && <span className="ml-1">{sortDir === "asc" ? "▲" : "▼"}</span>}
     </th>
+  );
+}
+
+function isTestOnly(r: HealthInfo): boolean {
+  return (
+    Array.isArray(r.scopes) &&
+    r.scopes.length > 0 &&
+    r.scopes.every((s) => s === "test")
+  );
+}
+
+function TestBadge() {
+  return (
+    <span
+      className="rounded bg-sky-500/20 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-sky-300"
+      title="test-scope dependency only"
+    >
+      test
+    </span>
   );
 }
 

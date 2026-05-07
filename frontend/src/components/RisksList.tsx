@@ -41,11 +41,20 @@ export function RisksList({ rows, onSelect }: Props) {
               >
                 <div className="flex items-baseline justify-between gap-3">
                   <div>
-                    <div className="font-medium text-slate-100">
-                      {r.coordinate.artifactId}{" "}
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-slate-100">
+                        {r.coordinate.artifactId}
+                      </span>
                       <span className="text-xs text-slate-500">
                         {r.coordinate.version}
                       </span>
+                      {Array.isArray(r.scopes) &&
+                        r.scopes.length > 0 &&
+                        r.scopes.every((s) => s === "test") && (
+                          <span className="rounded bg-sky-500/20 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-sky-300">
+                            test
+                          </span>
+                        )}
                     </div>
                     <div className="text-xs text-slate-500">
                       {r.coordinate.groupId}

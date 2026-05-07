@@ -40,6 +40,7 @@ export interface HealthInfo {
   healthScore: number;
   status: HealthStatus;
   reasons: string[];
+  scopes: string[];
 }
 
 export interface DependencyNode {
@@ -59,6 +60,7 @@ export interface Summary {
   withVulnerabilities: number;
   totalVulnerabilities: number;
   archivedRepos: number;
+  testOnly: number;
 }
 
 export interface AnalysisResult {

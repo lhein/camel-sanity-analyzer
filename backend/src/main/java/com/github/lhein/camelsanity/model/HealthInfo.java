@@ -40,6 +40,13 @@ public record HealthInfo(
         // Aggregated
         int healthScore,           // 0-100
         HealthStatus status,
-        List<String> reasons       // human-readable reasons for the status
+        List<String> reasons,      // human-readable reasons for the status
+
+        // Tree position: all scopes this coordinate appears with in the tree
+        List<String> scopes
 ) {
+    public boolean isTestOnly() {
+        return scopes != null && !scopes.isEmpty()
+                && scopes.stream().allMatch(s -> "test".equals(s));
+    }
 }

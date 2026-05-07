@@ -23,8 +23,26 @@ export function DetailDrawer({ info, onClose }: Props) {
             <div className="text-xs uppercase tracking-wide text-slate-400">
               {c.groupId}
             </div>
-            <h2 className="text-xl font-semibold text-slate-50">
+            <h2 className="flex items-center gap-2 text-xl font-semibold text-slate-50">
               {c.artifactId}
+              {info.scopes && info.scopes.length > 0 && (
+                <span className="flex gap-1">
+                  {info.scopes.map((s) => (
+                    <span
+                      key={s}
+                      className={`rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide ${
+                        s === "test"
+                          ? "bg-sky-500/20 text-sky-300"
+                          : s === "provided"
+                          ? "bg-violet-500/20 text-violet-300"
+                          : "bg-slate-700/60 text-slate-300"
+                      }`}
+                    >
+                      {s}
+                    </span>
+                  ))}
+                </span>
+              )}
             </h2>
             <div className="mt-1 font-mono text-sm text-slate-300">
               {c.version}

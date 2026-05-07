@@ -67,6 +67,16 @@ export function Dashboard({ summary }: Props) {
     },
   ];
 
+  if (summary.testOnly > 0) {
+    cards.push({
+      label: "Test-only",
+      value: summary.testOnly,
+      hint: "test scope",
+      color: "text-sky-400",
+      border: "border-sky-500/40",
+    });
+  }
+
   return (
     <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
       {cards.map((c) => (

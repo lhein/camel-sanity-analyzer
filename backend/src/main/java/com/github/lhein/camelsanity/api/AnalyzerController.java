@@ -6,6 +6,7 @@ import com.github.lhein.camelsanity.enrichment.CamelCatalogClient;
 import com.github.lhein.camelsanity.enrichment.MavenCentralClient;
 import com.github.lhein.camelsanity.model.AnalysisResult;
 import com.github.lhein.camelsanity.model.Coordinate;
+import com.github.lhein.camelsanity.scoring.VersionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
@@ -53,13 +54,30 @@ public class AnalyzerController {
     }
 
     /**
+     * Lists stable Camel versions for which a catalog has been published,
+     * newest first. Pre-releases (Alpha/Beta/RC/Milestone) are filtered out.
+     */
+    @GetMapping("/camel-versions")
+    public List<String> camelVersions() {
+        return mavenCentral
+                .listVersions("org.apache.camel", "camel-catalog")
+                .stream()
+                .map(MavenCentralClient.VersionInfo::version)
+                .filter(v -> !VersionUtils.isPreRelease(v))
+                .toList();
+    }
+
+    /**
      * Returns the Camel catalog grouped by kind plus a flat "all" list with
-     * {artifactId, kinds[]} entries. The catalog is fetched once for the
-     * latest stable Camel version and cached.
+     * {artifactId, kinds[]} entries. If {@code camelVersion} is omitted, the
+     * latest stable version is used.
      */
     @GetMapping("/artifacts")
-    public Map<String, Object> artifacts() {
-        CamelCatalogClient.Catalog c = catalog.fetchLatest();
+    public Map<String, Object> artifacts(
+            @RequestParam(required = false) String camelVersion) {
+        CamelCatalogClient.Catalog c = (camelVersion == null || camelVersion.isBlank())
+                ? catalog.fetchLatest()
+                : catalog.fetch(camelVersion);
         return Map.of(
                 "components", c.components(),
                 "dataformats", c.dataformats(),
@@ -79,10 +97,11 @@ public class AnalyzerController {
     @GetMapping(value = "/analyze", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter analyze(@RequestParam String artifactId,
                               @RequestParam String version,
-                              @RequestParam(defaultValue = "org.apache.camel") String groupId) {
+                              @RequestParam(defaultValue = "org.apache.camel") String groupId,
+                              @RequestParam(defaultValue = "false") boolean includeTest) {
         SseEmitter emitter = new SseEmitter(0L); // no timeout
         Coordinate coord = new Coordinate(groupId, artifactId, version);
-        log.info("Starting analysis for {}", coord.gav());
+        log.info("Starting analysis for {} (includeTest={})", coord.gav(), includeTest);
 
         Executors.newSingleThreadExecutor(r -> {
             Thread t = new Thread(r, "analyze-" + artifactId);
@@ -90,7 +109,7 @@ public class AnalyzerController {
             return t;
         }).submit(() -> {
             try {
-                AnalysisResult result = analyzer.analyze(coord, p -> {
+                AnalysisResult result = analyzer.analyze(coord, includeTest, p -> {
                     try {
                         emitter.send(SseEmitter.event().name("progress").data(p));
                     } catch (IOException ignored) {

@@ -154,6 +154,7 @@ function buildLayout(
 
     if (!seen.has(id)) {
       seen.add(id);
+      const isTest = n.scope === "test";
       nodes.push({
         id,
         position: { x: depth * (NODE_WIDTH + X_GAP), y },
@@ -170,6 +171,11 @@ function buildLayout(
                 <span className="truncate font-medium text-slate-100">
                   {n.coordinate.artifactId}
                 </span>
+                {isTest && (
+                  <span className="rounded bg-sky-500/20 px-1 text-[9px] font-semibold text-sky-300">
+                    T
+                  </span>
+                )}
               </div>
               <span className="truncate text-[10px] text-slate-400">
                 {n.coordinate.version}
@@ -183,6 +189,7 @@ function buildLayout(
           padding: 8,
           borderRadius: 6,
           fontSize: 12,
+          borderStyle: isTest ? "dashed" : undefined,
         },
         sourcePosition: "right" as any,
         targetPosition: "left" as any,

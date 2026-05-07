@@ -144,7 +144,8 @@ public class DependencyEnricher {
                 proj.scorecardScore(),
                 scored.score(),
                 status,
-                scored.reasons()
+                scored.reasons(),
+                List.of()  // scopes filled in later by AnalyzerService
         );
     }
 

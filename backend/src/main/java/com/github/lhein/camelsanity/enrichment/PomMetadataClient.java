@@ -6,6 +6,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.xml.sax.ErrorHandler;
+import org.xml.sax.SAXException;
+import org.xml.sax.SAXParseException;
 
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
@@ -23,6 +26,13 @@ public class PomMetadataClient {
 
     private static final Logger log = LoggerFactory.getLogger(PomMetadataClient.class);
     private static final String CENTRAL_BASE = "https://repo.maven.apache.org/maven2/";
+    private static final ErrorHandler SILENT_ERROR_HANDLER = new ErrorHandler() {
+        @Override public void warning(SAXParseException e) {}
+        @Override public void error(SAXParseException e) {}
+        @Override public void fatalError(SAXParseException e) throws SAXException {
+            throw e;
+        }
+    };
 
     private final WebClient client;
 
@@ -78,6 +88,12 @@ public class PomMetadataClient {
             factory.setNamespaceAware(false);
             factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
             DocumentBuilder builder = factory.newDocumentBuilder();
+            // Default error handler prints "[Fatal Error] ..." to stderr before
+            // the exception propagates. Some old POMs use HTML entities like
+            // &nbsp; that aren't valid XML — install a silent handler that
+            // still throws (caught by our outer try/catch) so the analysis
+            // log stays clean.
+            builder.setErrorHandler(SILENT_ERROR_HANDLER);
             var doc = builder.parse(new ByteArrayInputStream(xml.getBytes(StandardCharsets.UTF_8)));
             var root = doc.getDocumentElement();
 
