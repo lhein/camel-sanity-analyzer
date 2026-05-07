@@ -1,16 +1,25 @@
 import { useMemo, useState } from "react";
 import type { HealthInfo, HealthStatus } from "../types";
 import { StatusPill } from "./StatusPill";
-import { timeAgo } from "../util";
+import { scopeColor, timeAgo } from "../util";
 
 type SortKey =
   | "name"
+  | "scope"
   | "version"
   | "latest"
   | "lastCommit"
   | "score"
   | "status"
   | "cves";
+
+const SCOPE_PRIORITY: Record<string, number> = {
+  compile: 0,
+  runtime: 1,
+  provided: 2,
+  test: 3,
+  system: 4,
+};
 
 interface Props {
   rows: HealthInfo[];
@@ -25,6 +34,8 @@ const STATUS_FILTERS: HealthStatus[] = [
   "UNKNOWN",
 ];
 
+const SCOPE_FILTERS = ["compile", "runtime", "provided", "test", "system"];
+
 export function DependencyTable({ rows, onSelect }: Props) {
   const [sortKey, setSortKey] = useState<SortKey>("status");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
@@ -32,11 +43,18 @@ export function DependencyTable({ rows, onSelect }: Props) {
   const [statusFilter, setStatusFilter] = useState<Set<HealthStatus>>(
     new Set(STATUS_FILTERS),
   );
+  const [scopeFilter, setScopeFilter] = useState<Set<string>>(
+    new Set(SCOPE_FILTERS),
+  );
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim();
     return rows.filter((r) => {
       if (!statusFilter.has(r.status)) return false;
+      // Show row if at least one of its scopes is in the filter (or no scopes
+      // tracked at all, which we treat as "compile" implicitly).
+      const scopes = r.scopes && r.scopes.length > 0 ? r.scopes : ["compile"];
+      if (!scopes.some((s) => scopeFilter.has(s))) return false;
       if (!q) return true;
       const c = r.coordinate;
       return (
@@ -46,7 +64,7 @@ export function DependencyTable({ rows, onSelect }: Props) {
         (r.organization?.toLowerCase().includes(q) ?? false)
       );
     });
-  }, [rows, search, statusFilter]);
+  }, [rows, search, statusFilter, scopeFilter]);
 
   const sorted = useMemo(() => {
     const arr = [...filtered];
@@ -59,6 +77,15 @@ export function DependencyTable({ rows, onSelect }: Props) {
 
   function toggleStatus(s: HealthStatus) {
     setStatusFilter((prev) => {
+      const n = new Set(prev);
+      if (n.has(s)) n.delete(s);
+      else n.add(s);
+      return n;
+    });
+  }
+
+  function toggleScope(s: string) {
+    setScopeFilter((prev) => {
       const n = new Set(prev);
       if (n.has(s)) n.delete(s);
       else n.add(s);
@@ -98,6 +125,25 @@ export function DependencyTable({ rows, onSelect }: Props) {
             </button>
           ))}
         </div>
+        <span className="mx-1 text-slate-700">·</span>
+        <div className="flex flex-wrap gap-1">
+          {SCOPE_FILTERS.map((s) => {
+            const active = scopeFilter.has(s);
+            return (
+              <button
+                key={s}
+                onClick={() => toggleScope(s)}
+                className={`rounded-full px-2.5 py-0.5 text-xs font-medium uppercase tracking-wide border transition ${
+                  active
+                    ? scopeColor(s) + " border-transparent"
+                    : "border-slate-800 bg-slate-900 text-slate-500"
+                }`}
+              >
+                {s}
+              </button>
+            );
+          })}
+        </div>
         <span className="text-xs text-slate-400">
           {sorted.length} of {rows.length}
         </span>
@@ -108,6 +154,7 @@ export function DependencyTable({ rows, onSelect }: Props) {
           <thead className="bg-slate-900/80 text-xs uppercase text-slate-400">
             <tr>
               <Th label="Name" k="name" sortKey={sortKey} sortDir={sortDir} onClick={setSort} />
+              <Th label="Scope" k="scope" sortKey={sortKey} sortDir={sortDir} onClick={setSort} />
               <Th label="Version" k="version" sortKey={sortKey} sortDir={sortDir} onClick={setSort} />
               <Th label="Latest" k="latest" sortKey={sortKey} sortDir={sortDir} onClick={setSort} />
               <Th label="Last Commit" k="lastCommit" sortKey={sortKey} sortDir={sortDir} onClick={setSort} />
@@ -126,15 +173,15 @@ export function DependencyTable({ rows, onSelect }: Props) {
                   onClick={() => onSelect(r)}
                 >
                   <td className="px-3 py-2">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-slate-100">
-                        {r.coordinate.artifactId}
-                      </span>
-                      {isTestOnly(r) && <TestBadge />}
+                    <div className="font-medium text-slate-100">
+                      {r.coordinate.artifactId}
                     </div>
                     <div className="text-xs text-slate-500">
                       {r.coordinate.groupId}
                     </div>
+                  </td>
+                  <td className="px-3 py-2">
+                    <ScopeBadges scopes={r.scopes} />
                   </td>
                   <td className="px-3 py-2 font-mono text-xs">
                     {r.coordinate.version}
@@ -202,24 +249,29 @@ function Th({
   );
 }
 
-function isTestOnly(r: HealthInfo): boolean {
+function ScopeBadges({ scopes }: { scopes: string[] | null | undefined }) {
+  if (!scopes || scopes.length === 0) return null;
   return (
-    Array.isArray(r.scopes) &&
-    r.scopes.length > 0 &&
-    r.scopes.every((s) => s === "test")
-  );
-}
-
-function TestBadge() {
-  return (
-    <span
-      className="rounded bg-sky-500/20 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-sky-300"
-      title="test-scope dependency only"
-    >
-      test
+    <span className="flex gap-1">
+      {scopes.map((s) => (
+        <ScopeBadge key={s} scope={s} />
+      ))}
     </span>
   );
 }
+
+function ScopeBadge({ scope }: { scope: string }) {
+  const cls = scopeColor(scope);
+  return (
+    <span
+      className={`rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide ${cls}`}
+      title={`${scope}-scope dependency`}
+    >
+      {scope}
+    </span>
+  );
+}
+
 
 function ScoreBar({ score }: { score: number }) {
   const color =
@@ -247,6 +299,8 @@ function compare(a: HealthInfo, b: HealthInfo, k: SortKey): number {
   switch (k) {
     case "name":
       return a.coordinate.artifactId.localeCompare(b.coordinate.artifactId);
+    case "scope":
+      return scopeRank(a.scopes) - scopeRank(b.scopes);
     case "version":
       return a.coordinate.version.localeCompare(b.coordinate.version);
     case "latest":
@@ -271,4 +325,15 @@ function cmpDate(a: string | null, b: string | null): number {
 
 function statusRank(s: HealthStatus): number {
   return { CRITICAL: 4, WARNING: 3, OUTDATED: 2, UNKNOWN: 1, HEALTHY: 0 }[s];
+}
+
+/** Rank a row by its lowest-priority (most "default") scope. compile=0, system=4. */
+function scopeRank(scopes: string[] | null | undefined): number {
+  if (!scopes || scopes.length === 0) return 99;
+  let min = Infinity;
+  for (const s of scopes) {
+    const p = SCOPE_PRIORITY[s] ?? 50;
+    if (p < min) min = p;
+  }
+  return min;
 }

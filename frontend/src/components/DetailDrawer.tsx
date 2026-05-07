@@ -1,6 +1,6 @@
 import type { HealthInfo } from "../types";
 import { StatusPill } from "./StatusPill";
-import { formatDate, timeAgo } from "../util";
+import { formatDate, scopeColor, timeAgo } from "../util";
 
 interface Props {
   info: HealthInfo;
@@ -30,13 +30,7 @@ export function DetailDrawer({ info, onClose }: Props) {
                   {info.scopes.map((s) => (
                     <span
                       key={s}
-                      className={`rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide ${
-                        s === "test"
-                          ? "bg-sky-500/20 text-sky-300"
-                          : s === "provided"
-                          ? "bg-violet-500/20 text-violet-300"
-                          : "bg-slate-700/60 text-slate-300"
-                      }`}
+                      className={`rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide ${scopeColor(s)}`}
                     >
                       {s}
                     </span>
@@ -209,3 +203,4 @@ function Row({
     </div>
   );
 }
+

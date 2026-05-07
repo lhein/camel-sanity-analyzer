@@ -68,7 +68,7 @@ export default function App() {
                 Camel Sanity Analyzer
               </h1>
               <p className="text-xs text-slate-500">
-                Health & freshness check for Apache Camel components
+                Health & freshness check for Apache Camel
               </p>
             </div>
             {tokenWarning && (

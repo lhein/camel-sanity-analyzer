@@ -32,6 +32,23 @@ export function statusTextColor(s: HealthStatus): string {
   }
 }
 
+export function scopeColor(scope: string): string {
+  switch (scope) {
+    case "compile":
+      return "bg-slate-700/60 text-slate-300";
+    case "runtime":
+      return "bg-violet-500/20 text-violet-300";
+    case "test":
+      return "bg-sky-500/20 text-sky-300";
+    case "provided":
+      return "bg-amber-500/20 text-amber-300";
+    case "system":
+      return "bg-rose-500/20 text-rose-300";
+    default:
+      return "bg-slate-700/60 text-slate-300";
+  }
+}
+
 export function statusBorderColor(s: HealthStatus): string {
   switch (s) {
     case "HEALTHY":
