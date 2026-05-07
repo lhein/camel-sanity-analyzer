@@ -5,6 +5,7 @@ import com.github.lhein.camelsanity.model.HealthInfo;
 import com.github.lhein.camelsanity.model.HealthStatus;
 import com.github.lhein.camelsanity.model.Vulnerability;
 import com.github.lhein.camelsanity.scoring.HealthScorer;
+import com.github.lhein.camelsanity.scoring.LicenseCategory;
 import com.github.lhein.camelsanity.scoring.VersionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -109,6 +110,10 @@ public class DependencyEnricher {
         Integer behind = latest
                 .map(v -> VersionUtils.majorVersionsBehind(coord.version(), v.version()))
                 .orElse(null);
+        VersionUtils.UpdateLevel updateLevel = latest
+                .map(v -> VersionUtils.classifyUpdate(coord.version(), v.version()))
+                .orElse(VersionUtils.UpdateLevel.UNKNOWN);
+        LicenseCategory licenseCat = LicenseCategory.classify(depsInfo.license());
         Instant releaseDate = depsInfo.publishedAt();
         Instant latestReleaseDate = latestDeps.publishedAt();
 
@@ -154,7 +159,11 @@ public class DependencyEnricher {
                 scored.score(),
                 status,
                 scored.reasons(),
-                List.of()  // scopes filled in later by AnalyzerService
+                List.of(),                  // scopes — filled in later by AnalyzerService
+                updateLevel.name(),
+                licenseCat.name(),
+                List.of(),                  // conflictedVersions — filled in later
+                List.of()                   // paths — filled in later
         );
     }
 

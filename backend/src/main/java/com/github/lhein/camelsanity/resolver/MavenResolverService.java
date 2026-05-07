@@ -18,6 +18,7 @@ import org.eclipse.aether.util.graph.selector.AndDependencySelector;
 import org.eclipse.aether.util.graph.selector.ExclusionDependencySelector;
 import org.eclipse.aether.util.graph.selector.OptionalDependencySelector;
 import org.eclipse.aether.util.graph.selector.ScopeDependencySelector;
+import org.eclipse.aether.util.graph.transformer.ConflictResolver;
 import org.eclipse.aether.util.repository.DefaultMirrorSelector;
 import org.eclipse.aether.util.repository.SimpleArtifactDescriptorPolicy;
 import org.slf4j.Logger;
@@ -27,6 +28,9 @@ import org.springframework.stereotype.Service;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
 
 @Service
 public class MavenResolverService {
@@ -44,7 +48,7 @@ public class MavenResolverService {
         );
     }
 
-    public DependencyNode resolveTree(Coordinate root, boolean includeTransitiveTest) {
+    public ResolveResult resolveTree(Coordinate root, boolean includeTransitiveTest) {
         try {
             DefaultRepositorySystemSession session = newSession(includeTransitiveTest);
             DefaultArtifact artifact = new DefaultArtifact(
@@ -76,11 +80,46 @@ public class MavenResolverService {
             // avoids spurious failures on artifacts whose JARs are not on Central
             // (old JEE jars, OS-specific classifiers, tests-classifier jars).
             CollectResult result = system.collectDependencies(session, collect);
-            return convert(result.getRoot(), artifact);
+            DependencyNode tree = convert(result.getRoot(), artifact);
+            Map<String, Set<String>> conflicts = new java.util.HashMap<>();
+            collectConflicts(result.getRoot(), conflicts);
+            return new ResolveResult(tree, conflicts);
         } catch (Exception e) {
             log.error("Failed to resolve {}: {}", root.gav(), e.getMessage());
             throw new RuntimeException("Failed to resolve " + root.gav() + ": " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * Walks the Aether tree and records, for each GA, the versions that lost
+     * version-conflict resolution. Aether attaches a {@code NODE_DATA_WINNER}
+     * data entry to loser nodes; we extract their version and group by GA.
+     */
+    private void collectConflicts(org.eclipse.aether.graph.DependencyNode aetherNode,
+                                  Map<String, Set<String>> out) {
+        if (aetherNode == null) return;
+        Object winner = aetherNode.getData().get(ConflictResolver.NODE_DATA_WINNER);
+        if (winner instanceof org.eclipse.aether.graph.DependencyNode winnerNode) {
+            var loserArt = aetherNode.getArtifact();
+            var winnerArt = winnerNode.getArtifact();
+            if (loserArt != null && winnerArt != null
+                    && !loserArt.getVersion().equals(winnerArt.getVersion())) {
+                String ga = winnerArt.getGroupId() + ":" + winnerArt.getArtifactId();
+                out.computeIfAbsent(ga, k -> new TreeSet<>()).add(loserArt.getVersion());
+            }
+        }
+        for (var child : aetherNode.getChildren()) {
+            collectConflicts(child, out);
+        }
+    }
+
+    /**
+     * @param tree                      converted dependency tree
+     * @param conflictedVersionsByGa    GA → set of losing versions (other than the
+     *                                  winner) seen anywhere in the original graph
+     */
+    public record ResolveResult(DependencyNode tree,
+                                Map<String, Set<String>> conflictedVersionsByGa) {
     }
 
     private DefaultRepositorySystemSession newSession(boolean includeTransitiveTest) {

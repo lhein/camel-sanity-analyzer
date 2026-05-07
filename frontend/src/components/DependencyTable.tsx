@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import type { HealthInfo, HealthStatus } from "../types";
 import { StatusPill } from "./StatusPill";
-import { scopeColor, timeAgo } from "../util";
+import { scopeColor, timeAgo, updateLevelColor } from "../util";
 
 type SortKey =
   | "name"
@@ -187,10 +187,12 @@ export function DependencyTable({ rows, onSelect }: Props) {
                     {r.coordinate.version}
                   </td>
                   <td className="px-3 py-2 font-mono text-xs">
-                    {r.latestVersion ?? "—"}
-                    {r.majorVersionsBehind && r.majorVersionsBehind > 0 ? (
-                      <span className="ml-2 text-amber-400">
-                        −{r.majorVersionsBehind} maj
+                    <span className={updateLevelColor(r.updateLevel)}>
+                      {r.latestVersion ?? "—"}
+                    </span>
+                    {r.updateLevel !== "NONE" && r.updateLevel !== "UNKNOWN" ? (
+                      <span className={`ml-2 text-[10px] uppercase ${updateLevelColor(r.updateLevel)}`}>
+                        {r.updateLevel.toLowerCase()}
                       </span>
                     ) : null}
                   </td>

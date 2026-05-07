@@ -41,6 +41,16 @@ export interface HealthInfo {
   status: HealthStatus;
   reasons: string[];
   scopes: string[];
+  updateLevel: "NONE" | "PATCH" | "MINOR" | "MAJOR" | "UNKNOWN";
+  licenseCategory:
+    | "PERMISSIVE"
+    | "WEAK_COPYLEFT"
+    | "COPYLEFT"
+    | "PUBLIC_DOMAIN"
+    | "PROPRIETARY"
+    | "UNKNOWN";
+  conflictedVersions: string[];
+  paths: string[][];
 }
 
 export interface DependencyNode {

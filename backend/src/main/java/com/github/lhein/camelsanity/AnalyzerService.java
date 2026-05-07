@@ -48,11 +48,14 @@ public class AnalyzerService {
      */
     public AnalysisResult analyze(Coordinate root, boolean includeTransitiveTest, Consumer<Progress> progress) {
         progress.accept(new Progress("RESOLVING", 0, 0, "Resolving dependency tree…"));
-        DependencyNode tree = resolver.resolveTree(root, includeTransitiveTest);
+        MavenResolverService.ResolveResult resolved = resolver.resolveTree(root, includeTransitiveTest);
+        DependencyNode tree = resolved.tree();
+        Map<String, Set<String>> conflictsByGa = resolved.conflictedVersionsByGa();
 
         Set<Coordinate> unique = new LinkedHashSet<>();
         Map<String, Set<String>> scopesByGav = new HashMap<>();
-        collect(tree, unique, scopesByGav);
+        Map<String, List<List<String>>> pathsByGav = new HashMap<>();
+        collect(tree, unique, scopesByGav, pathsByGav, new java.util.ArrayList<>());
         int total = unique.size();
         progress.accept(new Progress("ENRICHING", 0, total, "Tree resolved: " + total + " unique dependencies"));
 
@@ -76,14 +79,18 @@ public class AnalyzerService {
             done++;
             if (info != null) {
                 String gav = info.coordinate().gav();
+                String ga = info.coordinate().ga();
                 List<String> scopes = scopesByGav.getOrDefault(gav, Set.of()).stream()
                         .sorted().toList();
-                HealthInfo withScopes = withScopes(info, scopes);
+                List<String> conflicts = conflictsByGa.getOrDefault(ga, Set.of()).stream()
+                        .sorted().toList();
+                List<List<String>> paths = pathsByGav.getOrDefault(gav, List.of());
+                HealthInfo withTreeData = withTreeData(info, scopes, conflicts, paths);
                 synchronized (health) {
-                    health.put(gav, withScopes);
+                    health.put(gav, withTreeData);
                 }
                 progress.accept(new Progress("ENRICHING", done, total,
-                        gav + " → " + withScopes.status()));
+                        gav + " → " + withTreeData.status()));
             }
         }
 
@@ -92,24 +99,39 @@ public class AnalyzerService {
         return new AnalysisResult(root, Instant.now(), tree, health, summary);
     }
 
-    private void collect(DependencyNode node, Set<Coordinate> out, Map<String, Set<String>> scopesByGav) {
+    private void collect(DependencyNode node,
+                         Set<Coordinate> out,
+                         Map<String, Set<String>> scopesByGav,
+                         Map<String, List<List<String>>> pathsByGav,
+                         List<String> ancestors) {
         if (node == null) return;
         out.add(node.coordinate());
+        String gav = node.coordinate().gav();
         if (node.scope() != null) {
-            scopesByGav.computeIfAbsent(node.coordinate().gav(), k -> new TreeSet<>()).add(node.scope());
+            scopesByGav.computeIfAbsent(gav, k -> new TreeSet<>()).add(node.scope());
         }
+        // Each occurrence is one "reverse path" — the ancestor chain leading
+        // to it (excluding the node itself, including the root).
+        pathsByGav.computeIfAbsent(gav, k -> new java.util.ArrayList<>())
+                .add(List.copyOf(ancestors));
+        ancestors.add(gav);
         for (DependencyNode c : node.children()) {
-            collect(c, out, scopesByGav);
+            collect(c, out, scopesByGav, pathsByGav, ancestors);
         }
+        ancestors.remove(ancestors.size() - 1);
     }
 
-    private HealthInfo withScopes(HealthInfo h, List<String> scopes) {
+    private HealthInfo withTreeData(HealthInfo h,
+                                    List<String> scopes,
+                                    List<String> conflictedVersions,
+                                    List<List<String>> paths) {
         return new HealthInfo(
                 h.coordinate(), h.latestVersion(), h.releaseDate(), h.latestReleaseDate(),
                 h.majorVersionsBehind(), h.organization(), h.website(), h.repoUrl(),
                 h.lastCommit(), h.stars(), h.contributors(), h.openIssues(), h.archived(),
                 h.lastGithubRelease(), h.license(), h.dependents(), h.vulnerabilities(),
-                h.scorecardScore(), h.healthScore(), h.status(), h.reasons(), scopes);
+                h.scorecardScore(), h.healthScore(), h.status(), h.reasons(), scopes,
+                h.updateLevel(), h.licenseCategory(), conflictedVersions, paths);
     }
 
     private AnalysisResult.Summary computeSummary(Map<String, HealthInfo> health) {

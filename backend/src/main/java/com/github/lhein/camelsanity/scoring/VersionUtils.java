@@ -6,8 +6,17 @@ import java.util.regex.Pattern;
 public final class VersionUtils {
 
     private static final Pattern MAJOR = Pattern.compile("^(\\d+).*");
+    private static final Pattern SEMVER = Pattern.compile("^(\\d+)\\.(\\d+)\\.(\\d+).*");
     private static final Pattern QUALIFIER_TAIL =
             Pattern.compile(".*[.\\-](rc|cr|m|ea|pr)\\d*\\b.*", Pattern.CASE_INSENSITIVE);
+
+    public enum UpdateLevel {
+        NONE,    // current == latest
+        PATCH,   // 1.2.3 → 1.2.5
+        MINOR,   // 1.2.3 → 1.5.0
+        MAJOR,   // 1.2.3 → 2.0.0
+        UNKNOWN  // version strings can't be parsed semver-style
+    }
 
     private VersionUtils() {}
 
@@ -42,5 +51,39 @@ public final class VersionUtils {
         Integer l = majorOf(latest);
         if (c == null || l == null) return null;
         return Math.max(0, l - c);
+    }
+
+    /**
+     * Classify the gap between {@code current} and {@code latest} as PATCH,
+     * MINOR, or MAJOR — semver-style. Returns NONE if equal, UNKNOWN if either
+     * version is not recognizably {@code MAJOR.MINOR.PATCH}.
+     */
+    public static UpdateLevel classifyUpdate(String current, String latest) {
+        if (current == null || latest == null) return UpdateLevel.UNKNOWN;
+        if (current.equals(latest)) return UpdateLevel.NONE;
+        int[] c = parseSemver(current);
+        int[] l = parseSemver(latest);
+        if (c == null || l == null) return UpdateLevel.UNKNOWN;
+        if (l[0] > c[0]) return UpdateLevel.MAJOR;
+        if (l[0] < c[0]) return UpdateLevel.NONE;
+        if (l[1] > c[1]) return UpdateLevel.MINOR;
+        if (l[1] < c[1]) return UpdateLevel.NONE;
+        if (l[2] > c[2]) return UpdateLevel.PATCH;
+        return UpdateLevel.NONE;
+    }
+
+    private static int[] parseSemver(String version) {
+        if (version == null) return null;
+        var m = SEMVER.matcher(version.trim());
+        if (!m.matches()) return null;
+        try {
+            return new int[]{
+                    Integer.parseInt(m.group(1)),
+                    Integer.parseInt(m.group(2)),
+                    Integer.parseInt(m.group(3))
+            };
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 }

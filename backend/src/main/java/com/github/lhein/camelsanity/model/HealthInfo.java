@@ -43,7 +43,22 @@ public record HealthInfo(
         List<String> reasons,      // human-readable reasons for the status
 
         // Tree position: all scopes this coordinate appears with in the tree
-        List<String> scopes
+        List<String> scopes,
+
+        // Update classification: NONE / PATCH / MINOR / MAJOR / UNKNOWN
+        String updateLevel,
+
+        // License category: PERMISSIVE / WEAK_COPYLEFT / COPYLEFT / PUBLIC_DOMAIN / PROPRIETARY / UNKNOWN
+        String licenseCategory,
+
+        // Other versions of this artifact that appeared in the tree but lost
+        // version-conflict resolution. Empty if none.
+        List<String> conflictedVersions,
+
+        // Reverse paths from root to this coordinate. Each path is the chain of
+        // GAVs leading to it. Multiple paths if the dep is reachable through
+        // several routes.
+        List<List<String>> paths
 ) {
     public boolean isTestOnly() {
         return scopes != null && !scopes.isEmpty()

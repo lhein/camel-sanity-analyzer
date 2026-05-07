@@ -177,6 +177,71 @@ export function DetailDrawer({ info, onClose }: Props) {
             </ul>
           </div>
         )}
+
+        {info.conflictedVersions && info.conflictedVersions.length > 0 && (
+          <div className="mt-6">
+            <h3 className="mb-2 text-sm font-semibold text-amber-300">
+              Version conflicts
+            </h3>
+            <p className="mb-2 text-xs text-slate-400">
+              Other versions of this artifact were requested but lost the
+              conflict resolution. The selected version above won.
+            </p>
+            <ul className="flex flex-wrap gap-1">
+              {info.conflictedVersions.map((v) => (
+                <li
+                  key={v}
+                  className="rounded border border-amber-500/30 bg-amber-500/5 px-1.5 py-0.5 font-mono text-xs text-amber-300"
+                >
+                  {v}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {info.paths && info.paths.length > 0 && info.paths.some((p) => p.length > 0) && (
+          <div className="mt-6">
+            <h3 className="mb-2 text-sm font-semibold text-slate-200">
+              Pulled in by ({info.paths.filter((p) => p.length > 0).length}{" "}
+              path{info.paths.filter((p) => p.length > 0).length === 1 ? "" : "s"})
+            </h3>
+            <ul className="space-y-2">
+              {info.paths
+                .filter((p) => p.length > 0)
+                .slice(0, 10)
+                .map((path, idx) => (
+                  <li
+                    key={idx}
+                    className="rounded border border-slate-800 bg-slate-950/50 p-2 text-xs"
+                  >
+                    {path.map((gav, i) => {
+                      const a = gav.split(":");
+                      return (
+                        <span key={i} className="text-slate-300">
+                          {i > 0 && (
+                            <span className="mx-1.5 text-slate-600">→</span>
+                          )}
+                          <span className="font-medium text-slate-200">
+                            {a[1]}
+                          </span>
+                          {a[2] && (
+                            <span className="text-slate-500"> {a[2]}</span>
+                          )}
+                        </span>
+                      );
+                    })}
+                  </li>
+                ))}
+              {info.paths.filter((p) => p.length > 0).length > 10 && (
+                <li className="text-xs text-slate-500">
+                  +{info.paths.filter((p) => p.length > 0).length - 10} more
+                  paths…
+                </li>
+              )}
+            </ul>
+          </div>
+        )}
       </div>
     </div>
   );

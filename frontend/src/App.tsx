@@ -8,8 +8,9 @@ import { DetailDrawer } from "./components/DetailDrawer";
 import { RisksList } from "./components/RisksList";
 import { TreeGraph } from "./components/TreeGraph";
 import { ProgressBar } from "./components/ProgressBar";
+import { LicensesView } from "./components/LicensesView";
 
-type Tab = "table" | "tree" | "risks";
+type Tab = "table" | "tree" | "risks" | "licenses";
 
 export default function App() {
   const [result, setResult] = useState<AnalysisResult | null>(null);
@@ -104,6 +105,9 @@ export default function App() {
               <TabButton id="risks" current={tab} onClick={setTab}>
                 Risks
               </TabButton>
+              <TabButton id="licenses" current={tab} onClick={setTab}>
+                Licenses
+              </TabButton>
               <span className="ml-auto text-xs text-slate-500">
                 Analyzed {new Date(result.analyzedAt).toLocaleString()}
               </span>
@@ -121,6 +125,9 @@ export default function App() {
             )}
             {tab === "risks" && (
               <RisksList rows={rows} onSelect={setSelected} />
+            )}
+            {tab === "licenses" && (
+              <LicensesView rows={rows} onSelect={setSelected} />
             )}
           </>
         )}

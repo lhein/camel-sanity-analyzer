@@ -49,6 +49,53 @@ export function scopeColor(scope: string): string {
   }
 }
 
+export function updateLevelColor(level: string): string {
+  switch (level) {
+    case "PATCH":
+      return "text-emerald-400";
+    case "MINOR":
+      return "text-amber-400";
+    case "MAJOR":
+      return "text-red-400";
+    default:
+      return "text-slate-500";
+  }
+}
+
+export function licenseCategoryColor(cat: string): string {
+  switch (cat) {
+    case "PERMISSIVE":
+      return "bg-emerald-500/15 text-emerald-300 border-emerald-500/40";
+    case "WEAK_COPYLEFT":
+      return "bg-amber-500/15 text-amber-300 border-amber-500/40";
+    case "COPYLEFT":
+      return "bg-red-500/15 text-red-300 border-red-500/40";
+    case "PUBLIC_DOMAIN":
+      return "bg-sky-500/15 text-sky-300 border-sky-500/40";
+    case "PROPRIETARY":
+      return "bg-violet-500/15 text-violet-300 border-violet-500/40";
+    default:
+      return "bg-slate-700/40 text-slate-400 border-slate-600/40";
+  }
+}
+
+export function licenseCategoryLabel(cat: string): string {
+  switch (cat) {
+    case "PERMISSIVE":
+      return "Permissive";
+    case "WEAK_COPYLEFT":
+      return "Weak copyleft";
+    case "COPYLEFT":
+      return "Copyleft";
+    case "PUBLIC_DOMAIN":
+      return "Public domain";
+    case "PROPRIETARY":
+      return "Proprietary";
+    default:
+      return "Unknown";
+  }
+}
+
 export function statusBorderColor(s: HealthStatus): string {
   switch (s) {
     case "HEALTHY":
