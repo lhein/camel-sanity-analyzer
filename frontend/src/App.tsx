@@ -31,7 +31,7 @@ export default function App() {
     [result],
   );
 
-  function startAnalyze(artifactId: string, version: string) {
+  function startAnalyze(artifactId: string, version: string, includeTransitiveTest: boolean) {
     setBusy(true);
     setError(null);
     setResult(null);
@@ -43,6 +43,7 @@ export default function App() {
     });
     analyze(
       { groupId: "org.apache.camel", artifactId, version },
+      { includeTransitiveTest },
       {
         onProgress: setProgress,
         onResult: (r) => {

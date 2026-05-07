@@ -97,10 +97,11 @@ public class AnalyzerController {
     @GetMapping(value = "/analyze", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter analyze(@RequestParam String artifactId,
                               @RequestParam String version,
-                              @RequestParam(defaultValue = "org.apache.camel") String groupId) {
+                              @RequestParam(defaultValue = "org.apache.camel") String groupId,
+                              @RequestParam(defaultValue = "false") boolean includeTransitiveTest) {
         SseEmitter emitter = new SseEmitter(0L); // no timeout
         Coordinate coord = new Coordinate(groupId, artifactId, version);
-        log.info("Starting analysis for {}", coord.gav());
+        log.info("Starting analysis for {} (includeTransitiveTest={})", coord.gav(), includeTransitiveTest);
 
         Executors.newSingleThreadExecutor(r -> {
             Thread t = new Thread(r, "analyze-" + artifactId);
@@ -108,7 +109,7 @@ public class AnalyzerController {
             return t;
         }).submit(() -> {
             try {
-                AnalysisResult result = analyzer.analyze(coord, p -> {
+                AnalysisResult result = analyzer.analyze(coord, includeTransitiveTest, p -> {
                     try {
                         emitter.send(SseEmitter.event().name("progress").data(p));
                     } catch (IOException ignored) {

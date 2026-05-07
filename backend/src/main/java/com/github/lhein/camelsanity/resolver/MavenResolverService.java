@@ -14,6 +14,10 @@ import org.eclipse.aether.repository.RemoteRepository;
 import org.eclipse.aether.resolution.ArtifactDescriptorRequest;
 import org.eclipse.aether.resolution.ArtifactDescriptorResult;
 import org.eclipse.aether.supplier.RepositorySystemSupplier;
+import org.eclipse.aether.util.graph.selector.AndDependencySelector;
+import org.eclipse.aether.util.graph.selector.ExclusionDependencySelector;
+import org.eclipse.aether.util.graph.selector.OptionalDependencySelector;
+import org.eclipse.aether.util.graph.selector.ScopeDependencySelector;
 import org.eclipse.aether.util.repository.DefaultMirrorSelector;
 import org.eclipse.aether.util.repository.SimpleArtifactDescriptorPolicy;
 import org.slf4j.Logger;
@@ -40,9 +44,9 @@ public class MavenResolverService {
         );
     }
 
-    public DependencyNode resolveTree(Coordinate root) {
+    public DependencyNode resolveTree(Coordinate root, boolean includeTransitiveTest) {
         try {
-            DefaultRepositorySystemSession session = newSession();
+            DefaultRepositorySystemSession session = newSession(includeTransitiveTest);
             DefaultArtifact artifact = new DefaultArtifact(
                     root.groupId(), root.artifactId(), "jar", root.version());
 
@@ -79,7 +83,7 @@ public class MavenResolverService {
         }
     }
 
-    private DefaultRepositorySystemSession newSession() {
+    private DefaultRepositorySystemSession newSession(boolean includeTransitiveTest) {
         DefaultRepositorySystemSession session = MavenRepositorySystemUtils.newSession();
         File localRepo = new File(System.getProperty("user.home"), ".m2/repository");
         session.setLocalRepositoryManager(
@@ -100,6 +104,16 @@ public class MavenResolverService {
                 "https://repo.maven.apache.org/maven2/",
                 "default", false, false, "*", null);
         session.setMirrorSelector(mirrorSelector);
+        if (includeTransitiveTest) {
+            // Drop the default exclusion of test/provided so the analyzer also
+            // follows test-scope dependencies transitively. This produces a much
+            // larger tree (test → compile → test → … chains) and may surface
+            // tests-only artifacts that mvn dependency:tree hides.
+            session.setDependencySelector(new AndDependencySelector(
+                    new ScopeDependencySelector(),
+                    new OptionalDependencySelector(),
+                    new ExclusionDependencySelector()));
+        }
         return session;
     }
 

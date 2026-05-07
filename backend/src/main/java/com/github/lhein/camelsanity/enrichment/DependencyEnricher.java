@@ -65,8 +65,17 @@ public class DependencyEnricher {
         PomMetadataClient.PomMetadata pom = pomF.join();
         Optional<MavenCentralClient.VersionInfo> latest = latestF.join();
 
+        // Repo URL resolution order (each step skipped if null/no GitHub match):
+        //   1. deps.dev sourceRepo (most reliable when present)
+        //   2. POM <scm> URL (parent chain followed)
+        //   3. POM <url> / <organization>/<url> if they happen to point at GitHub
+        //      — many small projects skip <scm> but link the GitHub repo as the
+        //      project homepage
+        //   4. RepoHeuristics for well-known group prefixes
         String resolvedRepo = depsInfo.sourceRepo();
         if (resolvedRepo == null) resolvedRepo = pom.scmUrl();
+        if (resolvedRepo == null) resolvedRepo = githubLike(pom.projectUrl());
+        if (resolvedRepo == null) resolvedRepo = githubLike(pom.organizationUrl());
         if (resolvedRepo == null) resolvedRepo = RepoHeuristics.guess(coord);
         final String repoUrl = resolvedRepo;
 
@@ -169,5 +178,16 @@ public class DependencyEnricher {
     private static String firstNonBlank(String... s) {
         for (String x : s) if (x != null && !x.isBlank()) return x;
         return null;
+    }
+
+    /**
+     * Returns the URL only if it looks like a GitHub repo (owner/repo path),
+     * otherwise null. Used to opportunistically pick up SCM links from POM
+     * fields like &lt;url&gt; or &lt;organization&gt;/&lt;url&gt; which sometimes
+     * point at GitHub even though no &lt;scm&gt; was declared.
+     */
+    private static String githubLike(String url) {
+        if (url == null || url.isBlank()) return null;
+        return GitHubClient.parseRepo(url).map(or -> url).orElse(null);
     }
 }

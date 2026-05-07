@@ -43,13 +43,14 @@ export interface AnalyzeCallbacks {
 
 export function analyze(
   coord: Coordinate,
+  options: { includeTransitiveTest: boolean },
   cb: AnalyzeCallbacks,
 ): { close: () => void } {
   const url = `/api/analyze?artifactId=${encodeURIComponent(
     coord.artifactId,
   )}&version=${encodeURIComponent(coord.version)}&groupId=${encodeURIComponent(
     coord.groupId,
-  )}`;
+  )}&includeTransitiveTest=${options.includeTransitiveTest ? "true" : "false"}`;
   const es = new EventSource(url);
   es.addEventListener("progress", (ev) => {
     try {

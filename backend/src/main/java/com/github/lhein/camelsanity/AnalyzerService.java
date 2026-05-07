@@ -46,9 +46,9 @@ public class AnalyzerService {
      * Full pipeline: resolve tree → enrich each unique GAV → compute summary.
      * The progress callback is invoked between phases and on each completed enrichment.
      */
-    public AnalysisResult analyze(Coordinate root, Consumer<Progress> progress) {
+    public AnalysisResult analyze(Coordinate root, boolean includeTransitiveTest, Consumer<Progress> progress) {
         progress.accept(new Progress("RESOLVING", 0, 0, "Resolving dependency tree…"));
-        DependencyNode tree = resolver.resolveTree(root);
+        DependencyNode tree = resolver.resolveTree(root, includeTransitiveTest);
 
         Set<Coordinate> unique = new LinkedHashSet<>();
         Map<String, Set<String>> scopesByGav = new HashMap<>();
