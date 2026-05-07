@@ -1,8 +1,10 @@
-import { useMemo } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import ReactFlow, {
   Background,
   Controls,
   MarkerType,
+  ReactFlowProvider,
+  useReactFlow,
   type Edge,
   type Node,
 } from "reactflow";
@@ -25,31 +27,89 @@ interface Layout {
   edges: Edge[];
 }
 
-export function TreeGraph({ tree, healthByGav, onNodeClick }: Props) {
+const BOTTOM_GAP = 24;
+const MIN_HEIGHT = 360;
+
+export function TreeGraph(props: Props) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [height, setHeight] = useState<number>(MIN_HEIGHT);
+
+  useLayoutEffect(() => {
+    function update() {
+      const el = ref.current;
+      if (!el) return;
+      const top = el.getBoundingClientRect().top;
+      const next = Math.max(MIN_HEIGHT, window.innerHeight - top - BOTTOM_GAP);
+      setHeight(next);
+    }
+    update();
+    window.addEventListener("resize", update);
+    // Catch layout shifts above the tree (dashboard wrap, banner change).
+    const ro = new ResizeObserver(update);
+    if (document.body) ro.observe(document.body);
+    return () => {
+      window.removeEventListener("resize", update);
+      ro.disconnect();
+    };
+  }, []);
+
+  return (
+    <div
+      ref={ref}
+      style={{ height }}
+      className="w-full rounded-lg border border-slate-800 bg-slate-950"
+    >
+      <ReactFlowProvider>
+        <Inner {...props} containerHeight={height} />
+      </ReactFlowProvider>
+    </div>
+  );
+}
+
+function Inner({
+  tree,
+  healthByGav,
+  onNodeClick,
+  containerHeight,
+}: Props & { containerHeight: number }) {
   const layout = useMemo<Layout>(
     () => buildLayout(tree, healthByGav),
     [tree, healthByGav],
   );
 
+  const { fitView } = useReactFlow();
+
+  // Re-fit whenever the container height changes or a new tree is loaded.
+  // Without this, ReactFlow runs fitView once at mount with the initial
+  // (smaller) height and never re-centers when our dynamic resize lands.
+  useEffect(() => {
+    const id = window.setTimeout(
+      () => fitView({ padding: 0.15, duration: 200 }),
+      0,
+    );
+    return () => window.clearTimeout(id);
+  }, [containerHeight, layout, fitView]);
+
   return (
-    <div className="h-[640px] w-full rounded-lg border border-slate-800 bg-slate-950">
-      <ReactFlow
-        nodes={layout.nodes}
-        edges={layout.edges}
-        fitView
-        nodesDraggable={false}
-        nodesConnectable={false}
-        elementsSelectable
-        proOptions={{ hideAttribution: true }}
-        onNodeClick={(_, n) => {
-          const info = (n.data as { info?: HealthInfo }).info;
-          if (info) onNodeClick(info);
-        }}
-      >
-        <Background color="#1e293b" gap={24} />
-        <Controls showInteractive={false} />
-      </ReactFlow>
-    </div>
+    <ReactFlow
+      nodes={layout.nodes}
+      edges={layout.edges}
+      fitView
+      fitViewOptions={{ padding: 0.15 }}
+      minZoom={0.2}
+      maxZoom={2}
+      nodesDraggable={false}
+      nodesConnectable={false}
+      elementsSelectable
+      proOptions={{ hideAttribution: true }}
+      onNodeClick={(_, n) => {
+        const info = (n.data as { info?: HealthInfo }).info;
+        if (info) onNodeClick(info);
+      }}
+    >
+      <Background color="#1e293b" gap={24} />
+      <Controls showInteractive={false} />
+    </ReactFlow>
   );
 }
 
