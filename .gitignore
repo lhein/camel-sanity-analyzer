@@ -3,6 +3,7 @@ target/
 node_modules/
 dist/
 build/
+*.tsbuildinfo
 
 # IDE / tooling
 .idea/
