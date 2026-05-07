@@ -2,6 +2,7 @@ package com.github.lhein.camelsanity.api;
 
 import com.github.lhein.camelsanity.AnalyzerService;
 import com.github.lhein.camelsanity.config.AnalyzerProperties;
+import com.github.lhein.camelsanity.enrichment.CamelCatalogClient;
 import com.github.lhein.camelsanity.enrichment.MavenCentralClient;
 import com.github.lhein.camelsanity.model.AnalysisResult;
 import com.github.lhein.camelsanity.model.Coordinate;
@@ -29,13 +30,16 @@ public class AnalyzerController {
     private static final Logger log = LoggerFactory.getLogger(AnalyzerController.class);
 
     private final MavenCentralClient mavenCentral;
+    private final CamelCatalogClient catalog;
     private final AnalyzerService analyzer;
     private final AnalyzerProperties props;
 
     public AnalyzerController(MavenCentralClient mavenCentral,
+                              CamelCatalogClient catalog,
                               AnalyzerService analyzer,
                               AnalyzerProperties props) {
         this.mavenCentral = mavenCentral;
+        this.catalog = catalog;
         this.analyzer = analyzer;
         this.props = props;
     }
@@ -48,9 +52,22 @@ public class AnalyzerController {
         );
     }
 
-    @GetMapping("/components")
-    public List<String> components() {
-        return mavenCentral.listCamelComponents();
+    /**
+     * Returns the Camel catalog grouped by kind plus a flat "all" list with
+     * {artifactId, kinds[]} entries. The catalog is fetched once for the
+     * latest stable Camel version and cached.
+     */
+    @GetMapping("/artifacts")
+    public Map<String, Object> artifacts() {
+        CamelCatalogClient.Catalog c = catalog.fetchLatest();
+        return Map.of(
+                "components", c.components(),
+                "dataformats", c.dataformats(),
+                "languages", c.languages(),
+                "all", c.flatten().entrySet().stream()
+                        .map(e -> Map.of("artifactId", e.getKey(), "kinds", e.getValue()))
+                        .toList()
+        );
     }
 
     @GetMapping("/components/{artifactId}/versions")

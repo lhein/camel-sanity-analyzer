@@ -17,7 +17,7 @@ public class AppConfig {
     @Bean
     public CacheManager cacheManager(AnalyzerProperties props) {
         CaffeineCacheManager mgr = new CaffeineCacheManager(
-                "github-repo", "maven-versions", "maven-latest",
+                "github-repo", "maven-versions",
                 "depsdev", "osv", "scorecard", "components");
         mgr.setCaffeine(Caffeine.newBuilder()
                 .maximumSize(props.cache().maxEntries())

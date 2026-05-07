@@ -80,3 +80,17 @@ export interface VersionInfo {
   version: string;
   released: string | null;
 }
+
+export type Kind = "component" | "dataformat" | "language";
+
+export interface ArtifactEntry {
+  artifactId: string;
+  kinds: Kind[];
+}
+
+export interface ArtifactsResponse {
+  components: string[];
+  dataformats: string[];
+  languages: string[];
+  all: ArtifactEntry[];
+}

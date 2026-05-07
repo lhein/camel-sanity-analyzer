@@ -1,13 +1,14 @@
 import type {
   AnalysisResult,
+  ArtifactsResponse,
   Coordinate,
   Progress,
   VersionInfo,
 } from "./types";
 
-export async function fetchComponents(): Promise<string[]> {
-  const r = await fetch("/api/components");
-  if (!r.ok) throw new Error("Failed to load components");
+export async function fetchArtifacts(): Promise<ArtifactsResponse> {
+  const r = await fetch("/api/artifacts");
+  if (!r.ok) throw new Error("Failed to load artifacts");
   return r.json();
 }
 
