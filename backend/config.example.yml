@@ -1,0 +1,19 @@
+# Copy this file to config.yml and fill in your values.
+# config.yml is git-ignored.
+
+analyzer:
+  github:
+    # Personal Access Token (no scope needed for public repos).
+    # Without it, GitHub limits to 60 calls/hour, which is not enough for real analyses.
+    # Create at: https://github.com/settings/tokens
+    token: "ghp_your_token_here"
+
+  # Optional: tweak parallelism / timeouts
+  http:
+    connect-timeout-ms: 5000
+    read-timeout-ms: 15000
+
+  cache:
+    # Time-to-live for enrichment data (e.g. GitHub repo info). Resolution is per-coordinate.
+    ttl-minutes: 60
+    max-entries: 5000

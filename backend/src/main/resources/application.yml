@@ -1,0 +1,24 @@
+spring:
+  application:
+    name: camel-sanity-analyzer
+  config:
+    import: "optional:file:./config.yml"
+
+server:
+  port: 8080
+
+logging:
+  level:
+    com.github.lhein.camelsanity: INFO
+    org.apache.maven: WARN
+    org.eclipse.aether: WARN
+
+analyzer:
+  github:
+    token: "${GITHUB_TOKEN:}"
+  http:
+    connect-timeout-ms: 5000
+    read-timeout-ms: 15000
+  cache:
+    ttl-minutes: 60
+    max-entries: 5000

@@ -1,0 +1,23 @@
+# Build
+target/
+node_modules/
+dist/
+build/
+
+# IDE / tooling
+.idea/
+.vscode/
+.claude/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local config (contains secrets)
+backend/config.yml
+.env
+.env.local
+
+# Logs
+*.log

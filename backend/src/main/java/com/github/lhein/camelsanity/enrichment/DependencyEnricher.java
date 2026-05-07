@@ -1,0 +1,163 @@
+package com.github.lhein.camelsanity.enrichment;
+
+import com.github.lhein.camelsanity.model.Coordinate;
+import com.github.lhein.camelsanity.model.HealthInfo;
+import com.github.lhein.camelsanity.model.HealthStatus;
+import com.github.lhein.camelsanity.model.Vulnerability;
+import com.github.lhein.camelsanity.scoring.HealthScorer;
+import com.github.lhein.camelsanity.scoring.VersionUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+
+import java.time.Instant;
+import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
+
+/**
+ * Aggregates information about a single dependency from all enrichment sources
+ * and produces a HealthInfo. Per-source failures are tolerated.
+ */
+@Service
+public class DependencyEnricher {
+
+    private static final Logger log = LoggerFactory.getLogger(DependencyEnricher.class);
+
+    private final MavenCentralClient mavenCentral;
+    private final PomMetadataClient pomClient;
+    private final DepsDevClient depsDev;
+    private final GitHubClient github;
+    private final OsvClient osv;
+    private final Executor ioPool = Executors.newFixedThreadPool(16, r -> {
+        Thread t = new Thread(r, "enricher-io");
+        t.setDaemon(true);
+        return t;
+    });
+
+    public DependencyEnricher(MavenCentralClient mavenCentral,
+                              PomMetadataClient pomClient,
+                              DepsDevClient depsDev,
+                              GitHubClient github,
+                              OsvClient osv) {
+        this.mavenCentral = mavenCentral;
+        this.pomClient = pomClient;
+        this.depsDev = depsDev;
+        this.github = github;
+        this.osv = osv;
+    }
+
+    public HealthInfo enrich(Coordinate coord) {
+        // Run independent fetches in parallel
+        CompletableFuture<Optional<MavenCentralClient.VersionInfo>> latestF =
+                supply(() -> mavenCentral.latestVersion(coord), Optional.empty());
+        CompletableFuture<Optional<Instant>> releaseF =
+                supply(() -> mavenCentral.releaseDate(coord), Optional.empty());
+        CompletableFuture<PomMetadataClient.PomMetadata> pomF =
+                supply(() -> pomClient.fetch(coord), PomMetadataClient.PomMetadata.empty());
+        CompletableFuture<DepsDevClient.DepsDevInfo> depsF =
+                supply(() -> depsDev.fetchVersion(coord), DepsDevClient.DepsDevInfo.empty());
+        CompletableFuture<List<Vulnerability>> osvF =
+                supply(() -> osv.query(coord), List.of());
+
+        // Wait for the ones that feed downstream lookups
+        DepsDevClient.DepsDevInfo depsInfo = depsF.join();
+        PomMetadataClient.PomMetadata pom = pomF.join();
+
+        String resolvedRepo = depsInfo.sourceRepo();
+        if (resolvedRepo == null) resolvedRepo = pom.scmUrl();
+        if (resolvedRepo == null) resolvedRepo = RepoHeuristics.guess(coord);
+        final String repoUrl = resolvedRepo;
+
+        // Now downstream: GitHub repo + deps.dev project
+        Optional<GitHubClient.OwnerRepo> ownerRepo = GitHubClient.parseRepo(repoUrl);
+        CompletableFuture<GitHubClient.RepoInfo> ghF = ownerRepo
+                .map(or -> supply(() -> github.fetchRepo(or.owner(), or.repo()),
+                        GitHubClient.RepoInfo.empty()))
+                .orElse(CompletableFuture.completedFuture(GitHubClient.RepoInfo.empty()));
+
+        CompletableFuture<DepsDevClient.ProjectInfo> projF = repoUrl != null
+                ? supply(() -> depsDev.fetchProject(normalizeProjectId(repoUrl)),
+                        DepsDevClient.ProjectInfo.empty())
+                : CompletableFuture.completedFuture(DepsDevClient.ProjectInfo.empty());
+
+        Optional<MavenCentralClient.VersionInfo> latest = latestF.join();
+        Optional<Instant> releaseDate = releaseF.join();
+        GitHubClient.RepoInfo gh = ghF.join();
+        DepsDevClient.ProjectInfo proj = projF.join();
+        List<Vulnerability> vulns = osvF.join();
+
+        // Aggregate
+        Integer behind = latest
+                .map(v -> VersionUtils.majorVersionsBehind(coord.version(), v.version()))
+                .orElse(null);
+
+        HealthScorer.Builder b = new HealthScorer.Builder();
+        b.archived = gh.archived();
+        b.lastCommit = gh.lastPush();
+        b.lastGithubRelease = gh.latestRelease();
+        b.latestMavenReleaseDate = latest.map(MavenCentralClient.VersionInfo::released).orElse(null);
+        b.majorVersionsBehind = behind;
+        b.contributors = gh.contributors();
+        b.scorecardScore = proj.scorecardScore();
+        b.vulnerabilities = vulns;
+        HealthScorer.Result scored = HealthScorer.evaluate(b);
+
+        HealthStatus status = scored.status();
+        if (gh.lastPush() == null && proj.scorecardScore() == null && vulns.isEmpty()
+                && status == HealthStatus.HEALTHY && repoUrl == null) {
+            // No data → mark UNKNOWN, not HEALTHY
+            status = HealthStatus.UNKNOWN;
+        }
+
+        Integer stars = gh.stars() != null ? gh.stars() : proj.stars();
+
+        return new HealthInfo(
+                coord,
+                latest.map(MavenCentralClient.VersionInfo::version).orElse(null),
+                releaseDate.orElse(null),
+                latest.map(MavenCentralClient.VersionInfo::released).orElse(null),
+                behind,
+                pom.organizationName(),
+                firstNonBlank(pom.projectUrl(), pom.organizationUrl(), gh.homepage()),
+                gh.htmlUrl() != null ? gh.htmlUrl() : repoUrl,
+                gh.lastPush(),
+                stars,
+                gh.contributors(),
+                gh.openIssues(),
+                gh.archived(),
+                gh.latestRelease(),
+                depsInfo.license(),
+                null,
+                vulns,
+                proj.scorecardScore(),
+                scored.score(),
+                status,
+                scored.reasons()
+        );
+    }
+
+    private <T> CompletableFuture<T> supply(java.util.function.Supplier<T> s, T fallback) {
+        return CompletableFuture.supplyAsync(s, ioPool).exceptionally(e -> {
+            log.debug("Enrichment step failed: {}", e.getMessage());
+            return fallback;
+        });
+    }
+
+    private static String normalizeProjectId(String repoUrl) {
+        // deps.dev uses "github.com/owner/repo"
+        if (repoUrl == null) return null;
+        String r = repoUrl.replaceAll("^.*github\\.com[/:]", "github.com/")
+                .replaceAll("\\.git$", "")
+                .replaceAll("/+$", "");
+        if (!r.startsWith("github.com/")) return null;
+        return r;
+    }
+
+    private static String firstNonBlank(String... s) {
+        for (String x : s) if (x != null && !x.isBlank()) return x;
+        return null;
+    }
+}
