@@ -11,11 +11,9 @@ import org.eclipse.aether.collection.CollectResult;
 import org.eclipse.aether.graph.Dependency;
 import org.eclipse.aether.repository.LocalRepository;
 import org.eclipse.aether.repository.RemoteRepository;
+import org.eclipse.aether.resolution.ArtifactDescriptorRequest;
+import org.eclipse.aether.resolution.ArtifactDescriptorResult;
 import org.eclipse.aether.supplier.RepositorySystemSupplier;
-import org.eclipse.aether.util.graph.selector.AndDependencySelector;
-import org.eclipse.aether.util.graph.selector.ExclusionDependencySelector;
-import org.eclipse.aether.util.graph.selector.OptionalDependencySelector;
-import org.eclipse.aether.util.graph.selector.ScopeDependencySelector;
 import org.eclipse.aether.util.repository.DefaultMirrorSelector;
 import org.eclipse.aether.util.repository.SimpleArtifactDescriptorPolicy;
 import org.slf4j.Logger;
@@ -42,28 +40,46 @@ public class MavenResolverService {
         );
     }
 
-    public DependencyNode resolveTree(Coordinate root, boolean includeTest) {
+    public DependencyNode resolveTree(Coordinate root) {
         try {
-            DefaultRepositorySystemSession session = newSession(includeTest);
+            DefaultRepositorySystemSession session = newSession();
             DefaultArtifact artifact = new DefaultArtifact(
                     root.groupId(), root.artifactId(), "jar", root.version());
-            CollectRequest collect = new CollectRequest(
-                    new Dependency(artifact, "compile"), repositories);
+
+            // Read the artifact's POM to get the dependencies it declares —
+            // exactly what `mvn dependency:tree` shows as direct children.
+            // Going via setRoot(new Dependency(artifact, "compile")) would apply
+            // Maven's consumer→root scope composition, which silently drops
+            // declared test/provided deps because compile+test = (omitted).
+            ArtifactDescriptorRequest descriptorRequest = new ArtifactDescriptorRequest(
+                    artifact, repositories, null);
+            ArtifactDescriptorResult descriptor = system.readArtifactDescriptor(
+                    session, descriptorRequest);
+
+            // Then collect with setRootArtifact + the declared deps as direct
+            // children. Aether resolves transitive graphs for each child using
+            // its standard selector — test/provided are excluded transitively
+            // (matching mvn dependency:tree), while direct test/provided deps
+            // remain visible.
+            CollectRequest collect = new CollectRequest();
+            collect.setRootArtifact(artifact);
+            collect.setDependencies(descriptor.getDependencies());
+            collect.setManagedDependencies(descriptor.getManagedDependencies());
+            collect.setRepositories(repositories);
+
             // collectDependencies builds the graph from POMs only — it does NOT
             // download the actual JARs. That's all we need for analysis and
-            // avoids spurious failures on artifacts that exist in the dependency
-            // graph but whose JARs are not on Maven Central (old JEE jars,
-            // OS-specific classifiers like ${os.detected.name}-${os.detected.arch},
-            // tests-classifier artifacts, etc.).
+            // avoids spurious failures on artifacts whose JARs are not on Central
+            // (old JEE jars, OS-specific classifiers, tests-classifier jars).
             CollectResult result = system.collectDependencies(session, collect);
-            return convert(result.getRoot());
+            return convert(result.getRoot(), artifact);
         } catch (Exception e) {
             log.error("Failed to resolve {}: {}", root.gav(), e.getMessage());
             throw new RuntimeException("Failed to resolve " + root.gav() + ": " + e.getMessage(), e);
         }
     }
 
-    private DefaultRepositorySystemSession newSession(boolean includeTest) {
+    private DefaultRepositorySystemSession newSession() {
         DefaultRepositorySystemSession session = MavenRepositorySystemUtils.newSession();
         File localRepo = new File(System.getProperty("user.home"), ".m2/repository");
         session.setLocalRepositoryManager(
@@ -84,29 +100,21 @@ public class MavenResolverService {
                 "https://repo.maven.apache.org/maven2/",
                 "default", false, false, "*", null);
         session.setMirrorSelector(mirrorSelector);
-        if (includeTest) {
-            // Drop the default exclusion of test/provided so test-scope artifacts
-            // appear in the tree. Keep optional and exclusion selectors active.
-            session.setDependencySelector(new AndDependencySelector(
-                    new ScopeDependencySelector(),
-                    new OptionalDependencySelector(),
-                    new ExclusionDependencySelector()));
-        }
         return session;
     }
 
-    private DependencyNode convert(org.eclipse.aether.graph.DependencyNode aetherNode) {
-        if (aetherNode == null || aetherNode.getArtifact() == null) {
-            return null;
-        }
-        var a = aetherNode.getArtifact();
+    private DependencyNode convert(org.eclipse.aether.graph.DependencyNode aetherNode,
+                                   org.eclipse.aether.artifact.Artifact rootArtifactFallback) {
+        if (aetherNode == null) return null;
+        var a = aetherNode.getArtifact() != null ? aetherNode.getArtifact() : rootArtifactFallback;
+        if (a == null) return null;
         Coordinate coord = new Coordinate(a.getGroupId(), a.getArtifactId(), a.getVersion());
         Dependency dep = aetherNode.getDependency();
         String scope = dep != null ? dep.getScope() : "compile";
         boolean optional = dep != null && dep.isOptional();
         List<DependencyNode> children = new ArrayList<>();
         for (var child : aetherNode.getChildren()) {
-            DependencyNode converted = convert(child);
+            DependencyNode converted = convert(child, null);
             if (converted != null) {
                 children.add(converted);
             }

@@ -43,14 +43,13 @@ export interface AnalyzeCallbacks {
 
 export function analyze(
   coord: Coordinate,
-  options: { includeTest: boolean },
   cb: AnalyzeCallbacks,
 ): { close: () => void } {
   const url = `/api/analyze?artifactId=${encodeURIComponent(
     coord.artifactId,
   )}&version=${encodeURIComponent(coord.version)}&groupId=${encodeURIComponent(
     coord.groupId,
-  )}&includeTest=${options.includeTest ? "true" : "false"}`;
+  )}`;
   const es = new EventSource(url);
   es.addEventListener("progress", (ev) => {
     try {

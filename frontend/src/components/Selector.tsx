@@ -3,7 +3,7 @@ import type { ArtifactEntry, ArtifactsResponse, Kind } from "../types";
 import { fetchArtifacts, fetchCamelVersions } from "../api";
 
 interface Props {
-  onAnalyze: (artifactId: string, version: string, includeTest: boolean) => void;
+  onAnalyze: (artifactId: string, version: string) => void;
   busy: boolean;
 }
 
@@ -25,7 +25,6 @@ export function Selector({ onAnalyze, busy }: Props) {
   const [filter, setFilter] = useState("");
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<string>("");
-  const [includeTest, setIncludeTest] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -154,20 +153,6 @@ export function Selector({ onAnalyze, busy }: Props) {
           );
         })}
 
-        <span className="mx-1 text-slate-700">·</span>
-
-        <button
-          aria-pressed={includeTest}
-          onClick={() => setIncludeTest((v) => !v)}
-          title="Include test-scope dependencies in the analysis"
-          className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
-            includeTest
-              ? "border-sky-500/60 bg-sky-500/15 text-sky-200"
-              : "border-slate-700 bg-slate-900 text-slate-400 hover:bg-slate-800"
-          }`}
-        >
-          +test-scope
-        </button>
       </div>
 
       <div className="flex flex-wrap items-end gap-3">
@@ -218,7 +203,7 @@ export function Selector({ onAnalyze, busy }: Props) {
 
         <button
           disabled={!canAnalyze}
-          onClick={() => onAnalyze(selected, camelVersion, includeTest)}
+          onClick={() => onAnalyze(selected, camelVersion)}
           className="rounded bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {busy ? "Analyzing…" : "Analyze"}

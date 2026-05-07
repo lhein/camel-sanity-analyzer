@@ -31,7 +31,7 @@ export default function App() {
     [result],
   );
 
-  function startAnalyze(artifactId: string, version: string, includeTest: boolean) {
+  function startAnalyze(artifactId: string, version: string) {
     setBusy(true);
     setError(null);
     setResult(null);
@@ -43,7 +43,6 @@ export default function App() {
     });
     analyze(
       { groupId: "org.apache.camel", artifactId, version },
-      { includeTest },
       {
         onProgress: setProgress,
         onResult: (r) => {
